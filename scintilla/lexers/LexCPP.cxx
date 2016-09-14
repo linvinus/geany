@@ -888,75 +888,88 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
 							}
 
+							if(next_c == '=') next_c = ';';//C++ virtual method
+
 							char prev_c = 0;
 							int prev_style=0;
 							styler.Flush();//apply current style
 
-							if(next_c == ';'){
+							if(next_c == ';' || next_c == '{' || next_c == ':'  ){
+
+								/*checking is is prototype or not*/
+								
 								j= -1 - strlen((const char*)s);//prev ident start position
 								//~ printf("denis3: %d \r\n",j);
 
 								do{
+									printf("denis4: ");
 									do{
 										prev_c = PrevNotSpace(sc,&j);
 										prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-										//~ printf("denis4: %d %d %c\r\n",j,prev_style,sc.GetRelativeCharacter(j+1));
-									}while(prev_style == SCE_C_COMMENTLINE ||
+										printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
+									}while(
 									       prev_style == SCE_C_COMMENTDOC ||
 									       prev_style == SCE_C_COMMENT ||
 									       prev_style == SCE_C_PREPROCESSORCOMMENT);
+									printf("%s\r\n",s);
 
-									if(prev_c == ':' ) {prev_c = ( sc.GetRelativeCharacter(j-1) == ':' ? ':' : ';');}
-									//~ if(prev_c == ':'){
-										//~ prev_c = PrevNotSpace(sc,&j);
-										//~ if(prev_c == ':'){
-											//~ /*skip class definition*/
-											//~ do{
-												//~ prev_c = sc.GetRelativeCharacter(j--);
-												//~ //if( prev_c == '\\' ){ prev_c = sc.GetRelativeCharacter(j--);}
-											//~ }while(prev_c != 0 && !IsASpace(prev_c));
-										//~ }
-									//~ }
+									if(prev_c == ':' ) {
+										prev_c = ( sc.GetRelativeCharacter(j) == ':' ? ':' :';');
+									}else if(  /*prev_c == '*' ||*/
+									  (prev_c != '*' &&
+									   prev_c != '~' &&
+									   prev_style != SCE_C_WORD &&
+									   prev_style != SCE_C_WORD2 &&
+									   prev_style != SCE_C_IDENTIFIER)
+									){
+										j=-1;//reset
+										prev_c = ';';//comment line not allowed in function prototype
+										break;
+									}
 								}while(prev_c != 0 &&
 								      (prev_c == '*' || /*skip pointer definition */
 								       prev_c == '~')); /*skip class destroy*/
 
 								int k = j;
-								if(prev_c=='n' &&
-								   sc.GetRelativeCharacter(k--)=='r' &&
-								   sc.GetRelativeCharacter(k--)=='u' &&
-								   sc.GetRelativeCharacter(k--)=='t' &&
-								   sc.GetRelativeCharacter(k--)=='e' &&
-								   sc.GetRelativeCharacter(k--)=='r'
+								if(prev_c == 'n' &&
+								   sc.GetRelativeCharacter(k--) == 'r' &&
+								   sc.GetRelativeCharacter(k--) == 'u' &&
+								   sc.GetRelativeCharacter(k--) == 't' &&
+								   sc.GetRelativeCharacter(k--) == 'e' &&
+								   sc.GetRelativeCharacter(k--) == 'r'
 								  ){
 									char tmp = sc.GetRelativeCharacter(k--);
 									if(IsASpace(tmp) || tmp == '}'){
 										prev_c=';';//return can't be in declaration
 									}
-								}else if(prev_c=='e' &&
-								   sc.GetRelativeCharacter(k--)=='s' &&
-								   sc.GetRelativeCharacter(k--)=='l' &&
-								   sc.GetRelativeCharacter(k--)=='e'
+								}else if(prev_c == 'e' &&
+								   sc.GetRelativeCharacter(k--) == 's' &&
+								   sc.GetRelativeCharacter(k--) == 'l' &&
+								   sc.GetRelativeCharacter(k--) == 'e'
 								  ){
 									char tmp = sc.GetRelativeCharacter(k--);
 									if(IsASpace(tmp) || tmp == '}'){
 										prev_c=';';//else can't be in declaration
 									}
 								}
+								/*skip 'new' for c++?*/
 							}else{
 								j=-1;//reset
 							}
 
-							prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-							if( (next_c == ';'  &&
+							printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+
+							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+							if( ( (next_c == ';' || next_c == '{')  &&/*
 							     prev_style != SCE_C_COMMENTLINE &&
 							     prev_style != SCE_C_COMMENTDOC &&
 							     prev_style != SCE_C_COMMENT &&
-							     prev_style != SCE_C_PREPROCESSORCOMMENT &&
+							     prev_style != SCE_C_PREPROCESSORCOMMENT &&*/
 							    ((prev_c > 'A' && prev_c < 'z') ||
 							     (prev_c > '0' && prev_c < '9') ||
 							     prev_c == '_' )  ) ||
-							     next_c == '{' || prev_c==':'
+							     ( next_c == '{' && prev_c==':') ||
+							     ( next_c == ':' && prev_c==':')
 							){
 								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 								sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
