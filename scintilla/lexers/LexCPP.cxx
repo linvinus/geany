@@ -918,6 +918,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									}else if(  /*prev_c == '*' ||*/
 									  (prev_c != '*' &&
 									   prev_c != '~' &&
+									   prev_style != SCE_C_GLOBALCLASS &&
 									   prev_style != SCE_C_WORD &&
 									   prev_style != SCE_C_WORD2 &&
 									   prev_style != SCE_C_IDENTIFIER)
