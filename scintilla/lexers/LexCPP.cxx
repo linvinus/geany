@@ -98,6 +98,15 @@ bool OnlySpaceOrTab(const std::string &s) {
 	return true;
 }
 
+char NextNotSpace(StyleContext &sc, int *j){
+	char ret;
+	do{
+		ret = sc.GetRelativeCharacter((*j)++);
+		if(ret=='\\') continue;
+	}while(ret != 0 && IsASpace(ret));
+	return ret;
+}
+
 std::vector<std::string> StringSplit(const std::string &text, int separator) {
 	std::vector<std::string> vs(text.empty() ? 0 : 1);
 	for (std::string::const_iterator it = text.begin(); it != text.end(); ++it) {
@@ -668,6 +677,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 	bool isStringInPreprocessor = false;
 	bool inRERange = false;
 	bool seenDocKeyBrace = false;
+	int LastCidentChar = ';';
 
 	Sci_Position lineCurrent = styler.GetLine(startPos);
 	if ((MaskActive(initStyle) == SCE_C_PREPROCESSOR) ||
@@ -782,6 +792,26 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 
 		const bool atLineEndBeforeSwitch = sc.atLineEnd;
 
+
+		if( (
+			MaskActive(sc.state) == SCE_C_DEFAULT &&
+			(chPrevNonWhite == ';' ||
+			chPrevNonWhite == '}' )
+		) ||
+		(
+			MaskActive(sc.state) == SCE_C_OPERATOR &&
+			(LastCidentChar != '=' && /*skip all from '=' to ';' */
+			chPrevNonWhite != '*' /*skip pointer*/ )
+		)
+		){
+		if(LastCidentChar != ':' && chPrevNonWhite == ':')
+			LastCidentChar = (sc.ch == ':' ? chPrevNonWhite : ' ');
+		else
+			LastCidentChar= (chPrevNonWhite == '~' && LastCidentChar == ':' ? LastCidentChar : chPrevNonWhite) ;//reset by ;
+		}
+
+		printf("_denis: %c->%c %d [%c]\r\n",chPrevNonWhite,sc.ch,MaskActive(sc.state),LastCidentChar);
+
 		// Determine if the current state should terminate.
 		switch (MaskActive(sc.state)) {
 			case SCE_C_OPERATOR:
@@ -810,6 +840,9 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					} else {
 						sc.GetCurrentLowered(s, sizeof(s));
 					}
+
+					printf("denis: %s %c %d\r\n",s,LastCidentChar,MaskActive(sc.state));
+
 					if (keywords.InList(s)) {
 						lastWordWasUUID = strcmp(s, "uuid") == 0;
 						sc.ChangeState(SCE_C_WORD|activitySet);
@@ -818,10 +851,54 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					} else if (keywords4.InList(s)) {
 						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
 					} else {
+
+					int j=0;
+					char next_c = NextNotSpace(sc, &j);
+
+					if( next_c == '(' ){
+						int bracket=0;
+						//printf("denis1: %s %c\r\n",s,next_c);
+						do{//find end of parameters definition
+							if( next_c == ')' ) bracket--;
+							next_c = sc.GetRelativeCharacter(j++);
+							if( next_c == '(' ) bracket++;
+						}while(next_c != 0 && (next_c != ')' || bracket != 0)  );
+
+						next_c = NextNotSpace(sc, &j);
+
+						/*skip const in C++*/
+						if(next_c == 'c' &&
+						NextNotSpace(sc, &j)=='o' &&
+						NextNotSpace(sc, &j)=='n' &&
+						NextNotSpace(sc, &j)=='s' &&
+						NextNotSpace(sc, &j)=='t'
+						){
+							next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
+						}
+
+						if( (next_c == ';' || next_c == '{'  ) && 
+						( (LastCidentChar > 'A' &&
+							LastCidentChar < 'z')
+							|| (LastCidentChar==':')
+							)
+						){
+							printf("denis_decl: %s %c<- ->%c\r\n",s,LastCidentChar,next_c);
+							sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
+						}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
+							printf("denis_func: %s %c<- ->%c\r\n",s,LastCidentChar,next_c);
+							sc.ChangeState(SCE_C_FUNC|activitySet);
+						}
+					}else {
 						int subStyle = classifierIdentifiers.ValueFor(s);
 						if (subStyle >= 0) {
 							sc.ChangeState(subStyle|activitySet);
 						}
+					}
+					}
+					if( LastCidentChar != '=' &&
+						strcmp(s, "return") != 0 &&
+						strcmp(s, "else") != 0 ){
+						LastCidentChar=sc.chPrev;
 					}
 					const bool literalString = sc.ch == '\"';
 					if (literalString || sc.ch == '\'') {
