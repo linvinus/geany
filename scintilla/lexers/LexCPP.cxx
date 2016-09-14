@@ -100,10 +100,33 @@ bool OnlySpaceOrTab(const std::string &s) {
 
 char NextNotSpace(StyleContext &sc, int *j){
 	char ret;
+	int comment = 0;
+	/*because we are looking forward, we need parse comments manually*/
 	do{
 		ret = sc.GetRelativeCharacter((*j)++);
-		if(ret=='\\') continue;
-	}while(ret != 0 && IsASpace(ret));
+		if( ret == '\\' ){
+			ret = sc.GetRelativeCharacter((*j)++);
+		}else if( comment == 0 && ret == '/' && sc.GetRelativeCharacter((*j)) == '*'){
+			comment=1;
+			(*j)++;
+		}else if( ret == '*' && sc.GetRelativeCharacter((*j)) == '/'){
+			comment=0;
+			(*j)++;
+			ret = sc.GetRelativeCharacter(*j);
+		}
+	}while(ret != 0 && (IsASpace(ret) || comment != 0));
+	return ret;
+}
+
+char PrevNotSpace(StyleContext &sc, int *j){
+	char ret;
+	/*comments not ignored here*/
+	do{
+		ret = sc.GetRelativeCharacter((*j)--);
+		if( ret == '\\' ){
+			ret = sc.GetRelativeCharacter((*j)--);
+		}
+	}while(ret != 0 && IsASpace(ret) );
 	return ret;
 }
 
@@ -677,7 +700,6 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 	bool isStringInPreprocessor = false;
 	bool inRERange = false;
 	bool seenDocKeyBrace = false;
-	int LastCidentChar = ';';
 
 	Sci_Position lineCurrent = styler.GetLine(startPos);
 	if ((MaskActive(initStyle) == SCE_C_PREPROCESSOR) ||
@@ -792,25 +814,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 
 		const bool atLineEndBeforeSwitch = sc.atLineEnd;
 
-
-		if( (
-			MaskActive(sc.state) == SCE_C_DEFAULT &&
-			(chPrevNonWhite == ';' ||
-			chPrevNonWhite == '}' )
-		) ||
-		(
-			MaskActive(sc.state) == SCE_C_OPERATOR &&
-			(LastCidentChar != '=' && /*skip all from '=' to ';' */
-			chPrevNonWhite != '*' /*skip pointer*/ )
-		)
-		){
-		if(LastCidentChar != ':' && chPrevNonWhite == ':')
-			LastCidentChar = (sc.ch == ':' ? chPrevNonWhite : ' ');
-		else
-			LastCidentChar= (chPrevNonWhite == '~' && LastCidentChar == ':' ? LastCidentChar : chPrevNonWhite) ;//reset by ;
-		}
-
-		printf("_denis: %c->%c %d [%c]\r\n",chPrevNonWhite,sc.ch,MaskActive(sc.state),LastCidentChar);
+		//printf("_denis: %c->%c %d [%c]\r\n",chPrevNonWhite,sc.ch,MaskActive(sc.state),prev_c);
 
 		// Determine if the current state should terminate.
 		switch (MaskActive(sc.state)) {
@@ -841,7 +845,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						sc.GetCurrentLowered(s, sizeof(s));
 					}
 
-					printf("denis: %s %c %d\r\n",s,LastCidentChar,MaskActive(sc.state));
+					printf("denis: %s %c %d\r\n",s,sc.GetRelativeCharacter(-20),MaskActive(sc.state));
 
 					if (keywords.InList(s)) {
 						lastWordWasUUID = strcmp(s, "uuid") == 0;
@@ -852,54 +856,122 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
 					} else {
 
-					int j=0;
-					char next_c = NextNotSpace(sc, &j);
+						int j=0;
+						char next_c = NextNotSpace(sc, &j);
+						printf("denis0: %s %c\r\n",s,next_c);
+						if( next_c == '(' ){
+							int bracket=0,comment = 0;
+							//printf("denis1: %s %c\r\n",s,next_c);
+							do{//find end of parameters definition
+								if( next_c == ')' ) bracket--;
+								next_c = sc.GetRelativeCharacter(j++);
+								if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
+									comment=1;
+									j++;
+								}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
+									comment=0;
+									j++;
+								}
+								if( next_c == '(' ) bracket++;
+							}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
 
-					if( next_c == '(' ){
-						int bracket=0;
-						//printf("denis1: %s %c\r\n",s,next_c);
-						do{//find end of parameters definition
-							if( next_c == ')' ) bracket--;
-							next_c = sc.GetRelativeCharacter(j++);
-							if( next_c == '(' ) bracket++;
-						}while(next_c != 0 && (next_c != ')' || bracket != 0)  );
+							next_c = NextNotSpace(sc, &j);
+							printf("denis01: %s %c\r\n",s,next_c);
 
-						next_c = NextNotSpace(sc, &j);
+							/*skip const in C++*/
+							if(next_c == 'c' &&
+								sc.GetRelativeCharacter(j++)=='o' &&
+								sc.GetRelativeCharacter(j++)=='n' &&
+								sc.GetRelativeCharacter(j++)=='s' &&
+								sc.GetRelativeCharacter(j++)=='t'
+							){
+								next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
+							}
 
-						/*skip const in C++*/
-						if(next_c == 'c' &&
-						NextNotSpace(sc, &j)=='o' &&
-						NextNotSpace(sc, &j)=='n' &&
-						NextNotSpace(sc, &j)=='s' &&
-						NextNotSpace(sc, &j)=='t'
-						){
-							next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
-						}
+							char prev_c = 0;
+							int prev_style=0;
+							styler.Flush();//apply current style
 
-						if( (next_c == ';' || next_c == '{'  ) && 
-						( (LastCidentChar > 'A' &&
-							LastCidentChar < 'z')
-							|| (LastCidentChar==':')
-							)
-						){
-							printf("denis_decl: %s %c<- ->%c\r\n",s,LastCidentChar,next_c);
-							sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
-						}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
-							printf("denis_func: %s %c<- ->%c\r\n",s,LastCidentChar,next_c);
-							sc.ChangeState(SCE_C_FUNC|activitySet);
-						}
-					}else {
-						int subStyle = classifierIdentifiers.ValueFor(s);
-						if (subStyle >= 0) {
-							sc.ChangeState(subStyle|activitySet);
+							if(next_c == ';'){
+								j= -1 - strlen((const char*)s);//prev ident start position
+								printf("denis3: %d \r\n",j);
+
+								do{
+									do{
+										prev_c = PrevNotSpace(sc,&j);
+										prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+										printf("denis4: %d %d %c\r\n",j,prev_style,sc.GetRelativeCharacter(j+1));
+									}while(prev_style == SCE_C_COMMENTLINE ||
+									       prev_style == SCE_C_COMMENTDOC ||
+									       prev_style == SCE_C_COMMENT ||
+									       prev_style == SCE_C_PREPROCESSORCOMMENT);
+
+									if(prev_c == ':' ) {prev_c = ( sc.GetRelativeCharacter(j-1) == ':' ? ':' : ';');}
+									//~ if(prev_c == ':'){
+										//~ prev_c = PrevNotSpace(sc,&j);
+										//~ if(prev_c == ':'){
+											//~ /*skip class definition*/
+											//~ do{
+												//~ prev_c = sc.GetRelativeCharacter(j--);
+												//~ //if( prev_c == '\\' ){ prev_c = sc.GetRelativeCharacter(j--);}
+											//~ }while(prev_c != 0 && !IsASpace(prev_c));
+										//~ }
+									//~ }
+								}while(prev_c != 0 &&
+								      (prev_c == '*' || /*skip pointer definition */
+								       prev_c == '~')); /*skip class destroy*/
+
+								int k = j;
+								if(prev_c=='n' &&
+								   sc.GetRelativeCharacter(k--)=='r' &&
+								   sc.GetRelativeCharacter(k--)=='u' &&
+								   sc.GetRelativeCharacter(k--)=='t' &&
+								   sc.GetRelativeCharacter(k--)=='e' &&
+								   sc.GetRelativeCharacter(k--)=='r'
+								  ){
+									char tmp = sc.GetRelativeCharacter(k--);
+									if(IsASpace(tmp) || tmp == '}'){
+										prev_c=';';//return can't be in declaration
+									}
+								}else if(prev_c=='e' &&
+								   sc.GetRelativeCharacter(k--)=='s' &&
+								   sc.GetRelativeCharacter(k--)=='l' &&
+								   sc.GetRelativeCharacter(k--)=='e'
+								  ){
+									char tmp = sc.GetRelativeCharacter(k--);
+									if(IsASpace(tmp) || tmp == '}'){
+										prev_c=';';//else can't be in declaration
+									}
+								}
+							}else{
+								j=-1;//reset
+							}
+
+							prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+							if( (next_c == ';'  &&
+							     prev_style != SCE_C_COMMENTLINE &&
+							     prev_style != SCE_C_COMMENTDOC &&
+							     prev_style != SCE_C_COMMENT &&
+							     prev_style != SCE_C_PREPROCESSORCOMMENT &&
+							    ((prev_c > 'A' && prev_c < 'z') ||
+							     (prev_c > '0' && prev_c < '9') ||
+							     prev_c == '_' )  ) ||
+							     next_c == '{' || prev_c==':'
+							){
+								printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+								sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
+							}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
+								printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
+								sc.ChangeState(SCE_C_FUNC|activitySet);
+							}
+						}else {
+							int subStyle = classifierIdentifiers.ValueFor(s);
+							if (subStyle >= 0) {
+								sc.ChangeState(subStyle|activitySet);
+							}
 						}
 					}
-					}
-					if( LastCidentChar != '=' &&
-						strcmp(s, "return") != 0 &&
-						strcmp(s, "else") != 0 ){
-						LastCidentChar=sc.chPrev;
-					}
+
 					const bool literalString = sc.ch == '\"';
 					if (literalString || sc.ch == '\'') {
 						size_t lenS = strlen(s);
