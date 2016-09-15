@@ -355,6 +355,8 @@ struct OptionsCPP {
 	bool foldPreprocessorAtElse;
 	bool foldCompact;
 	bool foldAtElse;
+	bool highligh_functions;
+	bool highligh_functions_declaration;
 	OptionsCPP() {
 		stylingWithinPreprocessor = false;
 		identifiersAllowDollars = true;
@@ -377,6 +379,8 @@ struct OptionsCPP {
 		foldPreprocessorAtElse = false;
 		foldCompact = false;
 		foldAtElse = false;
+		highligh_functions = false;
+		highligh_functions_declaration = false;
 	}
 };
 
@@ -420,6 +424,12 @@ struct OptionSetCPP : public OptionSet<OptionsCPP> {
 
 		DefineProperty("lexer.cpp.escape.sequence", &OptionsCPP::escapeSequence,
 			"Set to 1 to enable highlighting of escape sequences in strings");
+
+		DefineProperty("lexer.cpp.highligh.functions", &OptionsCPP::highligh_functions,
+			"Set to 1 to enable highlighting of functions calls.");
+
+		DefineProperty("lexer.cpp.highligh.functions_declaration", &OptionsCPP::highligh_functions_declaration,
+			"Set to 1 to enable highlighting of functions declarations");
 
 		DefineProperty("fold", &OptionsCPP::fold);
 
@@ -855,130 +865,137 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					} else if (keywords4.InList(s)) {
 						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
 					} else {
+						if(options.highligh_functions){
+							int j=0;
+							char next_c = NextNotSpace(sc, &j);
+							//~ printf("denis0: %s %c\r\n",s,next_c);
+							if( next_c == '(' ){
+								int bracket=0,comment = 0;
+								//printf("denis1: %s %c\r\n",s,next_c);
+								do{//find end of parameters definition
+									if( next_c == ')' ) bracket--;
+									next_c = sc.GetRelativeCharacter(j++);
+									if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
+										comment=1;
+										j++;
+									}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
+										comment=0;
+										j++;
+									}
+									if( next_c == '(' ) bracket++;
+								}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
 
-						int j=0;
-						char next_c = NextNotSpace(sc, &j);
-						//~ printf("denis0: %s %c\r\n",s,next_c);
-						if( next_c == '(' ){
-							int bracket=0,comment = 0;
-							//printf("denis1: %s %c\r\n",s,next_c);
-							do{//find end of parameters definition
-								if( next_c == ')' ) bracket--;
-								next_c = sc.GetRelativeCharacter(j++);
-								if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
-									comment=1;
-									j++;
-								}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
-									comment=0;
-									j++;
+								next_c = NextNotSpace(sc, &j);
+								//~ printf("denis01: %s %c\r\n",s,next_c);
+
+								/*skip const in C++*/
+								if(next_c == 'c' &&
+									sc.GetRelativeCharacter(j++)=='o' &&
+									sc.GetRelativeCharacter(j++)=='n' &&
+									sc.GetRelativeCharacter(j++)=='s' &&
+									sc.GetRelativeCharacter(j++)=='t'
+								){
+									next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
 								}
-								if( next_c == '(' ) bracket++;
-							}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
 
-							next_c = NextNotSpace(sc, &j);
-							//~ printf("denis01: %s %c\r\n",s,next_c);
+								if(next_c == '=') next_c = ';';//C++ virtual method
 
-							/*skip const in C++*/
-							if(next_c == 'c' &&
-								sc.GetRelativeCharacter(j++)=='o' &&
-								sc.GetRelativeCharacter(j++)=='n' &&
-								sc.GetRelativeCharacter(j++)=='s' &&
-								sc.GetRelativeCharacter(j++)=='t'
-							){
-								next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
-							}
+								char prev_c = 0;
+								int prev_style=0;
+								styler.Flush();//apply current style
 
-							if(next_c == '=') next_c = ';';//C++ virtual method
+								if( next_c == ';' || next_c == '{' || next_c == ':' ){
 
-							char prev_c = 0;
-							int prev_style=0;
-							styler.Flush();//apply current style
+									/*checking is is prototype or not*/
 
-							if(next_c == ';' || next_c == '{' || next_c == ':'  ){
+									j= -1 - strlen((const char*)s);//prev ident start position
+									//~ printf("denis3: %d \r\n",j);
 
-								/*checking is is prototype or not*/
-								
-								j= -1 - strlen((const char*)s);//prev ident start position
-								//~ printf("denis3: %d \r\n",j);
-
-								do{
-									printf("denis4: ");
 									do{
-										prev_c = PrevNotSpace(sc,&j);
-										prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-										printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
-									}while(
-									       prev_style == SCE_C_COMMENTDOC ||
-									       prev_style == SCE_C_COMMENT ||
-									       prev_style == SCE_C_PREPROCESSORCOMMENT);
-									printf("%s\r\n",s);
+										//~ printf("denis4: ");
+										do{
+											prev_c = PrevNotSpace(sc,&j);
+											prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+											//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
+										}while(
+													 prev_style == SCE_C_COMMENTDOC ||
+													 prev_style == SCE_C_COMMENT ||
+													 prev_style == SCE_C_PREPROCESSORCOMMENT);
+										//~ printf("%s\r\n",s);
 
-									if(prev_c == ':' ) {
-										prev_c = ( sc.GetRelativeCharacter(j) == ':' ? ':' :';');
-									}else if(  /*prev_c == '*' ||*/
-									  (prev_c != '*' &&
-									   prev_c != '~' &&
-									   prev_style != SCE_C_GLOBALCLASS &&
-									   prev_style != SCE_C_WORD &&
-									   prev_style != SCE_C_WORD2 &&
-									   prev_style != SCE_C_IDENTIFIER)
-									){
-										j=-1;//reset
-										prev_c = ';';//comment line not allowed in function prototype
-										break;
-									}
-								}while(prev_c != 0 &&
-								      (prev_c == '*' || /*skip pointer definition */
-								       prev_c == '~')); /*skip class destroy*/
+										if(prev_c == ':' ) {
+											prev_c = ( sc.GetRelativeCharacter(j) == ':' ? ':' :';');
+										}else if(  /*prev_c == '*' ||*/
+											(prev_c != '*' &&
+											 prev_c != '~' &&
+											 prev_style != SCE_C_GLOBALCLASS &&
+											 prev_style != SCE_C_WORD &&
+											 prev_style != SCE_C_WORD2 &&
+											 prev_style != SCE_C_IDENTIFIER)
+										){
+											j=-1;//reset
+											prev_c = ';';//comment line not allowed in function prototype
+											break;
+										}
+									}while(prev_c != 0 &&
+												(prev_c == '*' || /*skip pointer definition */
+												 prev_c == '~')); /*skip class destroy*/
 
-								int k = j;
-								if(prev_c == 'n' &&
-								   sc.GetRelativeCharacter(k--) == 'r' &&
-								   sc.GetRelativeCharacter(k--) == 'u' &&
-								   sc.GetRelativeCharacter(k--) == 't' &&
-								   sc.GetRelativeCharacter(k--) == 'e' &&
-								   sc.GetRelativeCharacter(k--) == 'r'
-								  ){
-									char tmp = sc.GetRelativeCharacter(k--);
-									if(IsASpace(tmp) || tmp == '}'){
-										prev_c=';';//return can't be in declaration
+									int k = j;
+									if(prev_c == 'n' &&
+										 sc.GetRelativeCharacter(k--) == 'r' &&
+										 sc.GetRelativeCharacter(k--) == 'u' &&
+										 sc.GetRelativeCharacter(k--) == 't' &&
+										 sc.GetRelativeCharacter(k--) == 'e' &&
+										 sc.GetRelativeCharacter(k--) == 'r'
+										){
+										char tmp = sc.GetRelativeCharacter(k--);
+										if(IsASpace(tmp) || tmp == '}'){
+											prev_c=';';//return can't be in declaration
+										}
+									}else if(prev_c == 'e' &&
+										 sc.GetRelativeCharacter(k--) == 's' &&
+										 sc.GetRelativeCharacter(k--) == 'l' &&
+										 sc.GetRelativeCharacter(k--) == 'e'
+										){
+										char tmp = sc.GetRelativeCharacter(k--);
+										if(IsASpace(tmp) || tmp == '}'){
+											prev_c=';';//else can't be in declaration
+										}
 									}
-								}else if(prev_c == 'e' &&
-								   sc.GetRelativeCharacter(k--) == 's' &&
-								   sc.GetRelativeCharacter(k--) == 'l' &&
-								   sc.GetRelativeCharacter(k--) == 'e'
-								  ){
-									char tmp = sc.GetRelativeCharacter(k--);
-									if(IsASpace(tmp) || tmp == '}'){
-										prev_c=';';//else can't be in declaration
-									}
+									/*skip 'new' for c++?*/
+								}else{
+									j=-1;//reset
 								}
-								/*skip 'new' for c++?*/
-							}else{
-								j=-1;//reset
-							}
 
-							printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+								//~ printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 
-							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-							if( ( (next_c == ';' || next_c == '{')  &&/*
-							     prev_style != SCE_C_COMMENTLINE &&
-							     prev_style != SCE_C_COMMENTDOC &&
-							     prev_style != SCE_C_COMMENT &&
-							     prev_style != SCE_C_PREPROCESSORCOMMENT &&*/
-							    ((prev_c > 'A' && prev_c < 'z') ||
-							     (prev_c > '0' && prev_c < '9') ||
-							     prev_c == '_' )  ) ||
-							     ( next_c == '{' && prev_c==':') ||
-							     ( next_c == ':' && prev_c==':')
-							){
-								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-								sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
-							}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
-								//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
-								sc.ChangeState(SCE_C_FUNC|activitySet);
+								//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+								if( ( (next_c == ';' || next_c == '{')  &&/*
+										 prev_style != SCE_C_COMMENTLINE &&
+										 prev_style != SCE_C_COMMENTDOC &&
+										 prev_style != SCE_C_COMMENT &&
+										 prev_style != SCE_C_PREPROCESSORCOMMENT &&*/
+										((prev_c > 'A' && prev_c < 'z') ||
+										 (prev_c > '0' && prev_c < '9') ||
+										 prev_c == '_' )  ) ||
+										 ( next_c == '{' && prev_c==':') ||
+										 ( next_c == ':' && prev_c==':')
+								){
+									//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+									if(options.highligh_functions_declaration)
+										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
+								}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
+									//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
+									sc.ChangeState(SCE_C_FUNC|activitySet);
+								}
+							}else{//not function identifier
+								int subStyle = classifierIdentifiers.ValueFor(s);
+								if (subStyle >= 0) {
+									sc.ChangeState(subStyle|activitySet);
+								}
 							}
-						}else {
+						}else {//highligh_functions==false
 							int subStyle = classifierIdentifiers.ValueFor(s);
 							if (subStyle >= 0) {
 								sc.ChangeState(subStyle|activitySet);
