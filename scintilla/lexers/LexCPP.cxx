@@ -905,8 +905,10 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										/*calculate parameters count, if present*/
 										if( next_c != ',' && next_c != ')' ){
 											int k = j;
-											if( next_c == 'v' && ScanForWord(sc, &k, "oid",3)){
-												j+=3;
+											if( (next_c == 'v' && ScanForWord(sc, &k, "oid",3)) ||
+											    (next_c == '.' && ScanForWord(sc, &k, "..",2))
+											){
+												j+=(k - j - 1);
 												char tmp=NextNotSpace(sc, &k);
 												if(tmp ==')'){
 													param_count++;//special case for void definition
