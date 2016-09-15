@@ -920,6 +920,14 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												j+=(k - j - 1);
 												//~printf("%d ]",j);
 											}
+										}else if( next_c == '=' ){
+											char tmp = NextNotSpace(sc, &k);
+											if( tmp != '='){
+												do{
+													tmp = NextNotSpace(sc, &k);
+												}while(tmp !=0 && tmp!=')' && tmp!=','); //what about another function call in initialization???
+												j+=(k - j - 1);//ignore param initialization in C++
+											}
 										}else if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
 											j+=4;//skip const
 										}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
@@ -1026,7 +1034,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								j=-1;//reset
 							}
 
-							 printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+							 //~printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 
 							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 							if( ( ( (next_c == ';' || next_c == '{')  &&/*
@@ -1037,7 +1045,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									((prev_c > 'A' && prev_c < 'z') ||
 									 (prev_c > '0' && prev_c < '9') ||
 									 prev_c == '_' )  ) ||
-									 ( next_c == '{' && prev_c==':') ||
+									 ( next_c == '{' && (prev_c==':' || prev_c=='}')) ||
 									 ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';'))
 							) ){
 								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
