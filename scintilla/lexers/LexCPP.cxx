@@ -1032,6 +1032,11 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									if(IsASpace(tmp) || tmp == '}'){
 										prev_c=';';//else can't be in declaration
 									}
+								}else if(prev_c == 'w' && ScanForWord(sc, &k, "ne",-2) ){
+									char tmp = sc.GetRelativeCharacter(k--);
+									if(IsASpace(tmp) || tmp == '='){
+										function_with_prameters=-1;//C++ skip object initialization
+									}
 								}
 								/*skip 'new' for c++?*/
 							}else{
