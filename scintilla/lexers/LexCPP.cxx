@@ -928,6 +928,10 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												}while(tmp !=0 && tmp!=')' && tmp!=','); //what about another function call in initialization???
 												j+=(k - j - 1);//ignore param initialization in C++
 											}
+										}else if( next_c == 's' && ScanForWord(sc, &k, "truct",5)){
+											j+=5;//skip struct
+										}else if( next_c == 'e' && ScanForWord(sc, &k, "num",3)){
+											j+=3;//skip enum
 										}else if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
 											j+=4;//skip const
 										}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
