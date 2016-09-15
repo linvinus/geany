@@ -929,18 +929,24 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
 										comment=0;
 										j++;
-									}
-									if( next_c == '(' ) bracket++;
-
-									if(bracket==0){
+									}else if( next_c == '(' ){
+										bracket++;
+									}else if(bracket==0 && comment==0){
+										//~printf(" %d=%c ",param_count,next_c);
 										/*calculate parameters count, if present*/
 										if( next_c != ',' && next_c != ')' ){
 											int k = j;
 											if( next_c == 'v' && ScanForWord(sc, &k, "oid",3)){
 												j+=3;
-												char tmp=sc.GetRelativeCharacter(k);
-												if(IsASpace(tmp) || tmp ==')')
+												char tmp=NextNotSpace(sc, &k);
+												if(tmp ==')'){
 													param_count++;//special case for void definition
+													param_len=4;
+													//next_c = tmp;
+													//~printf("[ %c %d - %d=",next_c,k,j);
+													j+=(k - j - 1);
+													//~printf("%d ]",j);
+												}
 											}else if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
 												j+=4;//skip const
 											}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
@@ -954,12 +960,15 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 													param_len++;
 												}
 											}
-										}else if( next_c == ',' ||  next_c == ')' ){
-											if( param_count == 1 ){
+										}else{
+											if( (next_c == ',' ||  next_c == ')') &&  param_len>0){
+												param_count++;
+												param_len=0;
+											}
+											//~printf(" =%d=%c %d",param_count,next_c,comment);
+											if( param_count == 2 ){
 												//looks like function with parameters;
 												function_with_prameters++;
-												param_len=0;
-												param_count=0;
 											}else{
 												if( next_c == ')' && param_count==0 && param_len==0){
 													//no parameters at all, is not possible to guess :(
@@ -968,12 +977,14 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 													function_with_prameters--;//arguments value
 												}
 											}
+											param_len=0;
+											param_count=0;
 										}
 									}
 								}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
 
 								next_c = NextNotSpace(sc, &j);
-								//~ printf("denis01: %s %c with+parameters=%d\r\n",s,next_c,function_with_prameters);
+								//~printf("denis01: %s '%c' with+parameters=%d\r\n",s,next_c,function_with_prameters);
 
 								/*skip const in C++*/
 								if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
