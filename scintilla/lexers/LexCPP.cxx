@@ -130,6 +130,19 @@ char PrevNotSpace(StyleContext &sc, int *j){
 	return ret;
 }
 
+bool ScanForWord(StyleContext &sc,int *j, const char* str, int n){
+	if(n>0){
+		for(int i=0;i<n;i++)
+			if(sc.GetRelativeCharacter((*j)++) != str[i] )
+				return 0;//not found
+	}else{//reverse direction
+		for(int i=-n-1;i>=0;i--)
+			if(sc.GetRelativeCharacter((*j)--) != str[i] )
+				return 0;//not found
+	}
+	return 1;//ok
+}
+
 std::vector<std::string> StringSplit(const std::string &text, int separator) {
 	std::vector<std::string> vs(text.empty() ? 0 : 1);
 	for (std::string::const_iterator it = text.begin(); it != text.end(); ++it) {
@@ -867,10 +880,45 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					} else {
 						if(options.highligh_functions){
 							int j=0;
-							char next_c = NextNotSpace(sc, &j);
+							char prev_c = 0;
+							int prev_style=0;
+							int istart = -1 - strlen((const char*)s);//relative start position of current identifier
+
+							char next_c = NextNotSpace(sc, &j);//lets begin
+
 							//~ printf("denis0: %s %c\r\n",s,next_c);
+							if(next_c == '<'){//checking for C++ template
+								int k=istart;
+							  do{
+									prev_c = PrevNotSpace(sc,&k);
+									prev_style = MaskActive(styler.StyleAt(sc.currentPos+k+1));
+									//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
+							  }while(
+										   prev_style == SCE_C_COMMENTDOC ||
+										   prev_style == SCE_C_COMMENT ||
+										   prev_style == SCE_C_PREPROCESSORCOMMENT);
+								if(prev_c==':' && sc.GetRelativeCharacter(k) == ':'){
+									//looks like C++ template
+									int bracket=0,comment = 0;
+									do{//find end of template definition
+										if( next_c == '>' ) bracket--;
+										next_c = sc.GetRelativeCharacter(j++);
+										if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
+											comment=1;
+											j++;
+										}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
+											comment=0;
+											j++;
+										}
+										if( next_c == '<' ) bracket++;
+									}while(next_c != 0 && ( (next_c != '>' && next_c != '{' && next_c != ';') || bracket != 0 || comment != 0 ) );
+
+									next_c = NextNotSpace(sc, &j);//now should be '(', if not then this is not C++ template
+								}
+							}
+
 							if( next_c == '(' ){
-								int bracket=0,comment = 0;
+								int bracket=0,comment=0,param_len=0,param_count=0, function_with_prameters=0;
 								//printf("denis1: %s %c\r\n",s,next_c);
 								do{//find end of parameters definition
 									if( next_c == ')' ) bracket--;
@@ -883,32 +931,59 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										j++;
 									}
 									if( next_c == '(' ) bracket++;
+
+									if(bracket==0){
+										/*calculate parameters count, if present*/
+										if( next_c != ',' && next_c != ')' ){
+											int k = j;
+											if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
+												printf(" const ");
+												j+=4;//skip const
+											}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
+												printf(" unsigned ");
+												j+=7;//skip unsigned
+											}else {
+												int space=IsASpace(next_c);
+												if(space && param_len >0){
+													param_count++;
+													param_len=0;
+												}else if(!space){
+													param_len++;
+												}
+											}
+										}else if( next_c == ',' ||  next_c == ')' ){
+											if( param_count == 1 ){
+												//looks like function with parameters;
+												function_with_prameters++;
+												param_len=0;
+												param_count=0;
+											}else if( next_c == ')' && param_count==0 /*&& param_len==0*/){
+												//no parameters at all, is not possible to guess :(
+												function_with_prameters++;//thinking that this is declaration by default
+											}
+										}
+									}
 								}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
 
 								next_c = NextNotSpace(sc, &j);
-								//~ printf("denis01: %s %c\r\n",s,next_c);
+								//~ printf("denis01: %s %c with+parameters=%d\r\n",s,next_c,function_with_prameters);
 
 								/*skip const in C++*/
-								if(next_c == 'c' &&
-									sc.GetRelativeCharacter(j++)=='o' &&
-									sc.GetRelativeCharacter(j++)=='n' &&
-									sc.GetRelativeCharacter(j++)=='s' &&
-									sc.GetRelativeCharacter(j++)=='t'
-								){
+								if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
 									next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
 								}
 
 								if(next_c == '=') next_c = ';';//C++ virtual method
 
-								char prev_c = 0;
-								int prev_style=0;
+								prev_c = 0;
+								prev_style=0;
 								styler.Flush();//apply current style
 
 								if( next_c == ';' || next_c == '{' || next_c == ':' ){
 
 									/*checking is is prototype or not*/
 
-									j= -1 - strlen((const char*)s);//prev ident start position
+									j= istart;//prev ident start position
 									//~ printf("denis3: %d \r\n",j);
 
 									do{
@@ -942,22 +1017,12 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												 prev_c == '~')); /*skip class destroy*/
 
 									int k = j;
-									if(prev_c == 'n' &&
-										 sc.GetRelativeCharacter(k--) == 'r' &&
-										 sc.GetRelativeCharacter(k--) == 'u' &&
-										 sc.GetRelativeCharacter(k--) == 't' &&
-										 sc.GetRelativeCharacter(k--) == 'e' &&
-										 sc.GetRelativeCharacter(k--) == 'r'
-										){
+									if(prev_c == 'n' && ScanForWord(sc, &k, "retur",-5) ){
 										char tmp = sc.GetRelativeCharacter(k--);
 										if(IsASpace(tmp) || tmp == '}'){
 											prev_c=';';//return can't be in declaration
 										}
-									}else if(prev_c == 'e' &&
-										 sc.GetRelativeCharacter(k--) == 's' &&
-										 sc.GetRelativeCharacter(k--) == 'l' &&
-										 sc.GetRelativeCharacter(k--) == 'e'
-										){
+									}else if(prev_c == 'e' && ScanForWord(sc, &k, "els",-3) ){
 										char tmp = sc.GetRelativeCharacter(k--);
 										if(IsASpace(tmp) || tmp == '}'){
 											prev_c=';';//else can't be in declaration
@@ -971,7 +1036,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								//~ printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 
 								//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-								if( ( (next_c == ';' || next_c == '{')  &&/*
+								if(function_with_prameters >0 && ( ( (next_c == ';' || next_c == '{')  &&/*
 										 prev_style != SCE_C_COMMENTLINE &&
 										 prev_style != SCE_C_COMMENTDOC &&
 										 prev_style != SCE_C_COMMENT &&
@@ -981,7 +1046,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										 prev_c == '_' )  ) ||
 										 ( next_c == '{' && prev_c==':') ||
 										 ( next_c == ':' && prev_c==':')
-								){
+								) ){
 									//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 									if(options.highligh_functions_declaration)
 										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
