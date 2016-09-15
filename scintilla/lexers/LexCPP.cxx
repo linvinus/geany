@@ -936,11 +936,14 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										/*calculate parameters count, if present*/
 										if( next_c != ',' && next_c != ')' ){
 											int k = j;
-											if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
-												printf(" const ");
+											if( next_c == 'v' && ScanForWord(sc, &k, "oid",3)){
+												j+=3;
+												char tmp=sc.GetRelativeCharacter(k);
+												if(IsASpace(tmp) || tmp ==')')
+													param_count++;//special case for void definition
+											}else if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
 												j+=4;//skip const
 											}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
-												printf(" unsigned ");
 												j+=7;//skip unsigned
 											}else {
 												int space=IsASpace(next_c);
@@ -957,9 +960,13 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												function_with_prameters++;
 												param_len=0;
 												param_count=0;
-											}else if( next_c == ')' && param_count==0 /*&& param_len==0*/){
-												//no parameters at all, is not possible to guess :(
-												function_with_prameters++;//thinking that this is declaration by default
+											}else{
+												if( next_c == ')' && param_count==0 && param_len==0){
+													//no parameters at all, is not possible to guess :(
+													function_with_prameters=1;//thinking that this is declaration by default
+												}else{
+													function_with_prameters--;//arguments value
+												}
 											}
 										}
 									}
@@ -1036,7 +1043,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								//~ printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
 
 								//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-								if(function_with_prameters >0 && ( ( (next_c == ';' || next_c == '{')  &&/*
+								if( ( ( (next_c == ';' || next_c == '{')  &&/*
 										 prev_style != SCE_C_COMMENTLINE &&
 										 prev_style != SCE_C_COMMENTDOC &&
 										 prev_style != SCE_C_COMMENT &&
@@ -1048,7 +1055,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										 ( next_c == ':' && prev_c==':')
 								) ){
 									//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-									if(options.highligh_functions_declaration)
+									if(options.highligh_functions_declaration && function_with_prameters >0 )
 										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
 								}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
 									//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
