@@ -886,37 +886,6 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 
 							char next_c = NextNotSpace(sc, &j);//lets begin
 
-							//~ printf("denis0: %s %c\r\n",s,next_c);
-							if(next_c == '<'){//checking for C++ template
-								int k=istart;
-							  do{
-									prev_c = PrevNotSpace(sc,&k);
-									prev_style = MaskActive(styler.StyleAt(sc.currentPos+k+1));
-									//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
-							  }while(
-										   prev_style == SCE_C_COMMENTDOC ||
-										   prev_style == SCE_C_COMMENT ||
-										   prev_style == SCE_C_PREPROCESSORCOMMENT);
-								if(prev_c==':' && sc.GetRelativeCharacter(k) == ':'){
-									//looks like C++ template
-									int bracket=0,comment = 0;
-									do{//find end of template definition
-										if( next_c == '>' ) bracket--;
-										next_c = sc.GetRelativeCharacter(j++);
-										if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
-											comment=1;
-											j++;
-										}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
-											comment=0;
-											j++;
-										}
-										if( next_c == '<' ) bracket++;
-									}while(next_c != 0 && ( (next_c != '>' && next_c != '{' && next_c != ';') || bracket != 0 || comment != 0 ) );
-
-									next_c = NextNotSpace(sc, &j);//now should be '(', if not then this is not C++ template
-								}
-							}
-
 							if( next_c == '(' ){
 								int bracket=0,comment=0,param_len=0,param_count=0, function_with_prameters=0;
 								//printf("denis1: %s %c\r\n",s,next_c);
