@@ -889,15 +889,15 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 					//~ printf("denis: %s %c %d\r\n",s,sc.GetRelativeCharacter(-20),MaskActive(sc.state));
 
 					if(options.highligh_functions){
-						int j=0, j_next = 0;
-						char prev_c = 0;
-						int prev_style=0;
-						int istart = -1 - strlen((const char*)s);//relative start position of current identifier
+						int j=0;
 
 						char next_c = NextNotSpace(sc, &j);//lets begin
 
 						if( next_c == '(' ){
-							int bracket=0, object_init=0;
+							int bracket=0, object_init=0, prev_style=0, j_next = 0;
+							char prev_c = 0;
+							int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
+
 							//printf("denis1: %s %c\r\n",s,next_c);
 							do{//find end of parameters definition
 								if( next_c == ')' ) bracket--;
