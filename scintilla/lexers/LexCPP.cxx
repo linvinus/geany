@@ -100,21 +100,24 @@ bool OnlySpaceOrTab(const std::string &s) {
 
 char NextNotSpace(StyleContext &sc, int *j){
 	char ret;
-	int comment = 0;
+	int comment = 0, str = 0;
 	/*because we are looking forward, we need parse comments manually*/
 	do{
 		ret = sc.GetRelativeCharacter((*j)++);
 		if( ret == '\\' ){
 			ret = sc.GetRelativeCharacter((*j)++);
-		}else if( comment == 0 && ret == '/' && sc.GetRelativeCharacter((*j)) == '*'){
+		}else if( ret == '"'){
+			str = !str;
+		}
+		if( comment == 0 && ret == '/' && sc.GetRelativeCharacter((*j)) == '*'){
 			comment=1;
 			(*j)++;
 		}else if( ret == '*' && sc.GetRelativeCharacter((*j)) == '/'){
 			comment=0;
 			(*j)++;
-			ret = sc.GetRelativeCharacter(*j);
+			ret = sc.GetRelativeCharacter((*j)++);
 		}
-	}while(ret != 0 && (IsASpace(ret) || comment != 0));
+	}while(ret != 0 && (IsASpace(ret) || comment != 0 || str != 0));
 	return ret;
 }
 
@@ -889,87 +892,18 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						char next_c = NextNotSpace(sc, &j);//lets begin
 
 						if( next_c == '(' ){
-							int bracket=0,comment=0,param_len=0,param_count=0, function_with_prameters=0;
+							int bracket=0, object_init=0;
 							//printf("denis1: %s %c\r\n",s,next_c);
 							do{//find end of parameters definition
 								if( next_c == ')' ) bracket--;
-								next_c = sc.GetRelativeCharacter(j++);
-								if( comment == 0 && next_c == '/' && sc.GetRelativeCharacter(j) == '*'){
-									comment=1;
-									j++;
-								}else if( next_c == '*' && sc.GetRelativeCharacter(j) == '/'){
-									comment=0;
-									j++;
-								}else if( next_c == '(' ){
+								next_c = NextNotSpace(sc, &j);
+								if( next_c == '(' ){
 									bracket++;
-								}else if(bracket==0 && comment==0){
-									//~printf(" %d=%c ",param_count,next_c);
-									/*calculate parameters count, if present*/
-									if( next_c != ',' && next_c != ')' ){
-										int k = j;
-										if( (next_c == 'v' && ScanForWord(sc, &k, "oid",3)) ||
-												(next_c == '.' && ScanForWord(sc, &k, "..",2))
-										){
-											j+=(k - j - 1);
-											char tmp=NextNotSpace(sc, &k);
-											if(tmp ==')'){
-												param_count++;//special case for void definition
-												param_len=4;
-												//next_c = tmp;
-												//~printf("[ %c %d - %d=",next_c,k,j);
-												j+=(k - j - 1);
-												//~printf("%d ]",j);
-											}
-										}else if( next_c == '=' ){
-											char tmp = NextNotSpace(sc, &k);
-											if( tmp != '='){
-												do{
-													tmp = NextNotSpace(sc, &k);
-												}while(tmp !=0 && tmp!=')' && tmp!=','); //what about another function call in initialization???
-												j+=(k - j - 1);//ignore param initialization in C++
-											}
-										}else if( next_c == 's' && ScanForWord(sc, &k, "truct",5)){
-											j+=5;//skip struct
-										}else if( next_c == 'e' && ScanForWord(sc, &k, "num",3)){
-											j+=3;//skip enum
-										}else if( next_c == 'c' && ScanForWord(sc, &k, "onst",4)){
-											j+=4;//skip const
-										}else if( next_c == 'u' && ScanForWord(sc, &k, "nsigned",7)){
-											j+=7;//skip unsigned
-										}else {
-											int space=IsASpace(next_c);
-											if(space && param_len >0){
-												param_count++;
-												param_len=0;
-											}else if(!space){
-												param_len++;
-											}
-										}
-									}else{
-										if( (next_c == ',' ||  next_c == ')') &&  param_len>0){
-											param_count++;
-											param_len=0;
-										}
-										//~printf(" =%d=%c %d",param_count,next_c,comment);
-										if( param_count == 2 ){
-											//looks like function with parameters;
-											function_with_prameters++;
-										}else{
-											if( next_c == ')' && param_count==0 && param_len==0){
-												//no parameters at all, is not possible to guess :(
-												function_with_prameters=1;//thinking that this is declaration by default
-											}else{
-												function_with_prameters--;//arguments value
-											}
-										}
-										param_len=0;
-										param_count=0;
-									}
 								}
-							}while(next_c != 0 && ( next_c != ')' || bracket != 0 || comment != 0 ) );
+							}while(next_c != 0 && ( next_c != ')' || bracket != 0 ) );
 
 							next_c = NextNotSpace(sc, &j);
-							//~printf("denis01: %s '%c' with+parameters=%d\r\n",s,next_c,function_with_prameters);
+							//~ printf("denis01: %s '%c' with+parameters=%d br=%d com=%d\r\n",s,next_c,object_init, bracket, comment);
 
 							/*skip const in C++*/
 							if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
@@ -1000,26 +934,27 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												 prev_style == SCE_C_COMMENTDOC ||
 												 prev_style == SCE_C_COMMENT ||
 												 prev_style == SCE_C_PREPROCESSORCOMMENT);
-									//~ printf("%s\r\n",s);
 
 									if(prev_c == ':' ) {
-										prev_c = ( sc.GetRelativeCharacter(j) == ':' ? ':' :';');
-									}else if(  /*prev_c == '*' ||*/
-										(prev_c != '*' &&
-										 prev_c != '~' &&
-										 prev_c != '}' &&
-										 prev_style != SCE_C_GLOBALCLASS &&
-										 prev_style != SCE_C_WORD &&
-										 prev_style != SCE_C_WORD2 &&
-										 prev_style != SCE_C_IDENTIFIER)
-									){
+										if(sc.GetRelativeCharacter(j) != ':'){
+											int tmpS = MaskActive(styler.StyleAt(sc.currentPos+j));
+											if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2)//checking is it 'public:'
+												prev_c = ';';
+										}
+									}else if( prev_c != '*' &&
+									          prev_c != '~' &&
+									          prev_c != '}' &&
+									          prev_style != SCE_C_GLOBALCLASS &&
+									          prev_style != SCE_C_WORD &&
+									          prev_style != SCE_C_WORD2 &&
+									          prev_style != SCE_C_IDENTIFIER ){
 										j=-1;//reset
 										prev_c = ';';//comment line not allowed in function prototype
 										break;
 									}
 								}while(prev_c != 0 &&
-											(prev_c == '*' || /*skip pointer definition */
-											 prev_c == '~')); /*skip class destroy*/
+								      (prev_c == '*' || /*skip pointer definition */
+								       prev_c == '~')); /*skip class destroy*/
 
 								int k = j;
 								if(prev_c == 'n' && ScanForWord(sc, &k, "retur",-5) ){
@@ -1035,30 +970,33 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								}else if(prev_c == 'w' && ScanForWord(sc, &k, "ne",-2) ){
 									char tmp = sc.GetRelativeCharacter(k--);
 									if(IsASpace(tmp) || tmp == '='){
-										function_with_prameters=-1;//C++ skip object initialization
+										object_init=1;//C++ skip object initialization
 									}
+								}else if(prev_c == 't' && ScanForWord(sc, &k, "explici",-7) ){
+									j-=7;
+									prev_c = PrevNotSpace(sc,&j);//skip explicit keyword
+								}
+
+								if(styler.StyleAt(sc.currentPos+j) == SCE_C_GLOBALCLASS){
+									object_init=1;//skip new class instance, only when header known
 								}
 								/*skip 'new' for c++?*/
 							}else{
 								j=-1;//reset
 							}
 
-							 //~printf("denis10: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+							 //~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
 
 							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-							if( ( ( (next_c == ';' || next_c == '{')  &&/*
-									 prev_style != SCE_C_COMMENTLINE &&
-									 prev_style != SCE_C_COMMENTDOC &&
-									 prev_style != SCE_C_COMMENT &&
-									 prev_style != SCE_C_PREPROCESSORCOMMENT &&*/
-									((prev_c > 'A' && prev_c < 'z') ||
-									 (prev_c > '0' && prev_c < '9') ||
-									 prev_c == '_' )  ) ||
-									 ( next_c == '{' && (prev_c==':' || prev_c=='}')) ||
-									 ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';'))
-							) ){
+							if( ( (next_c == ';' || next_c == '{')  &&
+							     ( (prev_c > 'A' && prev_c < 'z') ||
+							       (prev_c > '0' && prev_c < '9') ||
+							        prev_c == '_' )  ) ||
+							    ( next_c == '{' && (prev_c==':' || prev_c=='}') ) ||
+							    ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
+							 ){
 								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-								if(options.highligh_functions_declaration && function_with_prameters >0 ){
+								if(options.highligh_functions_declaration && !object_init ){
 									sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
 									//break;
 								}
