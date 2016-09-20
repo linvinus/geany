@@ -922,7 +922,8 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 							styler.Flush();//apply current style
 							j_next=j;
 
-							if( next_c == ';' || next_c == '{' || next_c == ':' ){
+							//~ if( next_c == ';' || next_c == '{' || next_c == ':' ){
+							{
 
 								/*checking is is prototype or not*/
 
@@ -935,9 +936,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										prev_c = PrevNotSpace(sc,&j);
 										prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 										//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
-									}while(
-												 prev_style == SCE_C_COMMENTDOC ||
-												 prev_style == SCE_C_COMMENT ||
+									}while(IsStreamCommentStyle(prev_style) ||
 												 prev_style == SCE_C_PREPROCESSORCOMMENT);
 
 									if(prev_c == ':' ) {
@@ -946,12 +945,16 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 											if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2)//checking is it 'public:'
 												prev_c = ';';
 										}
+									}else if(prev_style == SCE_C_PREPROCESSOR){
+													next_c=prev_c = 0;//don't highlight preprocessor
+													break;
 									}else if( prev_c != '*' &&
 									          prev_c != '~' &&
 									          prev_c != '}' &&
 									          prev_c != '>' && /* a->end() : */
 									          prev_c != '.' &&/* sel.RangeMain().End().Position() :*/
 									          prev_c != '?' && /* = ( ? :) */
+									          prev_c != '!' &&
 									          prev_style != SCE_C_GLOBALCLASS &&
 									          prev_style != SCE_C_WORD &&
 									          prev_style != SCE_C_WORD2 &&
@@ -962,7 +965,8 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									}
 								}while(prev_c != 0 &&
 								      (prev_c == '*' || /*skip pointer definition */
-								       prev_c == '~')); /*skip class destroy*/
+								       prev_c == '~' || /*skip class destroy*/
+								       prev_c == '!')); 
 
 								int k = j;
 								if(prev_c == 'n' && ScanForWord(sc, &k, "retur",-5) ){
@@ -989,16 +993,16 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									object_init=1;//skip new class instance, only when header known
 								}
 								/*skip 'new' for c++?*/
-							}else{
-								j=-1;//reset
-							}
+							}//else{
+								//j=-1;//reset
+							//}
 
 							 //~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
 
 							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 							if( ( (next_c == ';' || next_c == '{')  &&
-							     ( (prev_c > 'A' && prev_c < 'z') ||
-							       (prev_c > '0' && prev_c < '9') ||
+							     ( (prev_c >= 'A' && prev_c <= 'z') ||
+							       (prev_c >= '0' && prev_c <= '9') ||
 							        prev_c == '_' )  ) ||
 							    ( next_c == '{' && (prev_c==':' || prev_c=='}') ) ||
 							    ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
