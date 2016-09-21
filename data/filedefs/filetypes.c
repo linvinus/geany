@@ -45,6 +45,7 @@ styling.within.preprocessor=1
 lexer.cpp.track.preprocessor=0
 lexer.cpp.highligh.functions=1
 lexer.cpp.highligh.functions_declaration=1
+lexer.cpp.highligh.functions_prototypes=1
 
 [settings]
 # default extension used when saving files

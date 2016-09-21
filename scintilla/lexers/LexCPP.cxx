@@ -373,7 +373,7 @@ struct OptionsCPP {
 	bool foldAtElse;
 	bool highligh_functions;
 	bool highligh_functions_declaration;
-	bool dont_highligh_functions_prototypes;
+	bool highligh_functions_prototypes;
 	OptionsCPP() {
 		stylingWithinPreprocessor = false;
 		identifiersAllowDollars = true;
@@ -398,7 +398,7 @@ struct OptionsCPP {
 		foldAtElse = false;
 		highligh_functions = false;
 		highligh_functions_declaration = false;
-		dont_highligh_functions_prototypes = false;
+		highligh_functions_prototypes = false;
 	}
 };
 
@@ -449,8 +449,8 @@ struct OptionSetCPP : public OptionSet<OptionsCPP> {
 		DefineProperty("lexer.cpp.highligh.functions_declaration", &OptionsCPP::highligh_functions_declaration,
 			"Set to 1 to enable highlighting of functions declarations");
 
-		DefineProperty("lexer.cpp.dont_highligh.functions_prototypes", &OptionsCPP::dont_highligh_functions_prototypes,
-			"Set to 1 to disable highlighting of functions prototypes");
+		DefineProperty("lexer.cpp.highligh.functions_prototypes", &OptionsCPP::highligh_functions_prototypes,
+			"Set to 1 to enable highlighting of functions prototypes");
 
 		DefineProperty("fold", &OptionsCPP::fold);
 
@@ -1008,7 +1008,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 							    ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
 							 ){
 								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-								if(options.highligh_functions_declaration && !object_init && !(next_c == ';' && options.dont_highligh_functions_prototypes)){
+								if(options.highligh_functions_declaration && !object_init && !(next_c == ';' && !options.highligh_functions_prototypes)){
 									sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
 									//break;
 								}
