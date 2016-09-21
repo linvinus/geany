@@ -888,85 +888,119 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 
 					//~ printf("denis: %s %c %d\r\n",s,sc.GetRelativeCharacter(-20),MaskActive(sc.state));
 
-					if(options.highligh_functions){
-						int j=0;
+					if (keywords.InList(s)) {
+						lastWordWasUUID = strcmp(s, "uuid") == 0;
+						sc.ChangeState(SCE_C_WORD|activitySet);
+					} else if (keywords2.InList(s)) {
+						sc.ChangeState(SCE_C_WORD2|activitySet);
+					} else if (keywords4.InList(s)) {
+						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
+					} else {
 
-						char next_c = NextNotSpace(sc, &j);//lets begin
+						if(options.highligh_functions){
+							int j=0;
 
-						if( next_c == '(' ){
-							int bracket=0, object_init=0, prev_style=0, j_next = 0;
-							char prev_c = 0;
-							int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
+							char next_c = NextNotSpace(sc, &j);//lets begin
 
-							//printf("denis1: %s %c\r\n",s,next_c);
-							do{//find end of parameters definition
-								if( next_c == ')' ) bracket--;
+							if( next_c == '(' ){
+								int bracket=0, object_init=0, prev_style=0, j_next = 0;
+								char prev_c = 0;
+								int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
+
+								//printf("denis1: %s %c\r\n",s,next_c);
+								do{//find end of parameters definition
+									if( next_c == ')' ) bracket--;
+									next_c = NextNotSpace(sc, &j);
+									if( next_c == '(' ){
+										bracket++;
+									}
+								}while(next_c != 0 && ( next_c != ')' || bracket != 0 ) );
+
 								next_c = NextNotSpace(sc, &j);
-								if( next_c == '(' ){
-									bracket++;
+								//~ printf("denis01: %s '%c' with+parameters=%d br=%d com=%d\r\n",s,next_c,object_init, bracket, comment);
+
+								/*skip const in C++*/
+								if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
+									next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
 								}
-							}while(next_c != 0 && ( next_c != ')' || bracket != 0 ) );
 
-							next_c = NextNotSpace(sc, &j);
-							//~ printf("denis01: %s '%c' with+parameters=%d br=%d com=%d\r\n",s,next_c,object_init, bracket, comment);
+								if(next_c == '=') next_c = ';';//C++ virtual method
 
-							/*skip const in C++*/
-							if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
-								next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
-							}
-
-							if(next_c == '=') next_c = ';';//C++ virtual method
-
-							prev_c = 0;
-							prev_style=0;
-							styler.Flush();//apply current style
-							j_next=j;
-
-							//~ if( next_c == ';' || next_c == '{' || next_c == ':' ){
-							{
-
-								/*checking is is prototype or not*/
-
+								prev_c = 0;
+								prev_style=0;
+								styler.Flush();//apply current style
+								j_next=j;
 								j= istart;//prev ident start position
-								//~ printf("denis3: %d \r\n",j);
+								int prev_from_space = IsASpace(sc.GetRelativeCharacter(j));//is it space before function name?
+
+								/*
+								 * checking is is prototype/declaration or not
+								 *
+								 * */
 
 								do{
-									//~ printf("denis4: ");
-									do{
-										prev_c = PrevNotSpace(sc,&j);
-										prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-										//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
-									}while(IsStreamCommentStyle(prev_style) ||
-												 prev_style == SCE_C_PREPROCESSORCOMMENT);
+									prev_c = PrevNotSpace(sc,&j);
+									prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+									//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
+								}while(IsStreamCommentStyle(prev_style) ||
+											 prev_style == SCE_C_PREPROCESSORCOMMENT);
 
-									if(prev_c == ':' ) {
-										if(sc.GetRelativeCharacter(j) != ':'){
-											int tmpS = MaskActive(styler.StyleAt(sc.currentPos+j));
-											if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2)//checking is it 'public:'
-												prev_c = ';';
+								if(prev_c == ':' ) {
+									if(sc.GetRelativeCharacter(j) != ':'){
+										int tmpS = MaskActive(styler.StyleAt(sc.currentPos+j));
+										if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2){//checking is it 'public:'
+											prev_c = ';';
+											j=-1;
 										}
-									}else if(prev_style == SCE_C_PREPROCESSOR){
-													next_c=prev_c = 0;//don't highlight preprocessor
-													break;
-									}else if( prev_c != '*' &&
-									          prev_c != '~' &&
-									          prev_c != '}' &&
-									          prev_c != '>' && /* a->end() : */
-									          prev_c != '.' &&/* sel.RangeMain().End().Position() :*/
-									          prev_c != '?' && /* = ( ? :) */
-									          prev_c != '!' &&
-									          prev_style != SCE_C_GLOBALCLASS &&
-									          prev_style != SCE_C_WORD &&
-									          prev_style != SCE_C_WORD2 &&
-									          prev_style != SCE_C_IDENTIFIER ){
-										j=-1;//reset
-										prev_c = ';';//comment line not allowed in function prototype
-										break;
 									}
-								}while(prev_c != 0 &&
-								      (prev_c == '*' || /*skip pointer definition */
-								       prev_c == '~' || /*skip class destroy*/
-								       prev_c == '!')); 
+								}else if(prev_style == SCE_C_PREPROCESSOR){
+									next_c=prev_c = 0;//don't highlight preprocessor
+									j=-1;
+								}else if( prev_style == SCE_C_NUMBER ||
+													prev_style == SCE_C_STRING ||
+													prev_style == SCE_C_STRINGRAW ||
+													prev_style == SCE_C_CHARACTER   ){
+									prev_c = 0;//not allowed in function prototype
+									j=-1;
+								}else if( prev_style == SCE_C_COMMENTLINE ){
+									prev_c = ';';//comment line not allowed in function prototype
+									j=-1;
+								}else if(prev_c =='*' && prev_from_space ){
+									/*
+									 * example: asd* myfunc()
+									 * is '*' is a pointer definition or operator?
+									 * to resolve that, try to find some operator or brackets before it
+									 * 
+									 * */
+									int tmp_c,tmp_style,new_c=0,new_j;
+									int k=j;
+									do{
+										do{
+											tmp_c = PrevNotSpace(sc,&k);
+											tmp_style = MaskActive(styler.StyleAt(sc.currentPos+k+1));
+										}while(IsStreamCommentStyle(tmp_style) || tmp_style == SCE_C_PREPROCESSORCOMMENT);
+
+										if(new_c == 0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE)){
+											new_c = tmp_c;//remember next prev character
+											new_j = k;
+										}
+									}while(tmp_style !=0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE) );
+
+									printf("tmpc='%c'",tmp_c);
+									if( (tmp_style != SCE_C_COMMENTLINE) && (
+											setRelOp.Contains(tmp_c) ||
+											setArithmethicOp.Contains(tmp_c)  ||
+											setLogicalOp.Contains(tmp_c) ||
+											tmp_c == '^' || tmp_c == '~' ||
+											tmp_c == '(' || tmp_c == ')'
+											) ){
+												prev_c = ';' ;//operator was found, mark as function call
+												//~ break;
+									}else if(new_c != 0){
+										prev_c = new_c;
+										j=new_j;
+									}
+								}//'*'
 
 								int k = j;
 								if(prev_c == 'n' && ScanForWord(sc, &k, "retur",-5) ){
@@ -992,48 +1026,35 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								if(styler.StyleAt(sc.currentPos+j) == SCE_C_GLOBALCLASS){
 									object_init=1;//skip new class instance, only when header known
 								}
-								/*skip 'new' for c++?*/
-							}//else{
-								//j=-1;//reset
-							//}
 
-							 //~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
 
-							//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
-							if( ( (next_c == ';' || next_c == '{')  &&
-							     ( (prev_c >= 'A' && prev_c <= 'z') ||
-							       (prev_c >= '0' && prev_c <= '9') ||
-							        prev_c == '_' )  ) ||
-							    ( next_c == '{' && (prev_c==':' || prev_c=='}') ) ||
-							    ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
-							 ){
-								//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-								if(options.highligh_functions_declaration && !object_init && !(next_c == ';' && !options.highligh_functions_prototypes)){
-									sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
+								 //~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
+
+								//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+								if( ( (next_c == ';' || next_c == '{')  &&
+											(prev_c !='.' && setWord.Contains(prev_c))  ) ||
+										( next_c == '{' && (prev_c==':' || prev_c=='}' || prev_c == '~' ) ) ||
+										( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
+								 ){
+									//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
+									if(options.highligh_functions_declaration && !object_init && !(next_c == ';' && !options.highligh_functions_prototypes)){
+										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
+										//break;
+									}
+								}else if((next_c > ' ' && next_c < 'A') || (next_c > 'Z' && next_c < 'a')  || next_c > 'z' ){
+									//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
+									sc.ChangeState(SCE_C_FUNC|activitySet);
 									//break;
 								}
-							}else if((next_c > ' ' && next_c < 'A')  || next_c > 'z' ){
-								//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
-								sc.ChangeState(SCE_C_FUNC|activitySet);
-								//break;
+
+								if( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';')){
+									/*parenthesized initializers*/
+									skipCppParamInit = sc.currentPos + j_next;
+								}
+
 							}
+						}//if(options.highligh_functions)
 
-							if( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';')){
-								/*parenthesized initializers*/
-								skipCppParamInit = sc.currentPos + j_next;
-							}
-
-						}
-					}
-
-					if (keywords.InList(s)) {
-						lastWordWasUUID = strcmp(s, "uuid") == 0;
-						sc.ChangeState(SCE_C_WORD|activitySet);
-					} else if (keywords2.InList(s)) {
-						sc.ChangeState(SCE_C_WORD2|activitySet);
-					} else if (keywords4.InList(s)) {
-						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
-					} else {
 						int subStyle = classifierIdentifiers.ValueFor(s);
 						if (subStyle >= 0) {
 							sc.ChangeState(subStyle|activitySet);
