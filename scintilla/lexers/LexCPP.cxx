@@ -893,10 +893,11 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						sc.ChangeState(SCE_C_WORD|activitySet);
 					} else if (keywords2.InList(s)) {
 						sc.ChangeState(SCE_C_WORD2|activitySet);
-					} else if (keywords4.InList(s)) {
-						sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
 					} else {
-
+						/*
+						 * process function highlighting before tags
+						 * to be able handle parenthesized initializers
+						 * */
 						if(options.highligh_functions){
 							int j=0;
 
@@ -974,15 +975,15 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 												prev_c = PrevNotSpace(sc,&j);
 												prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 											}while( prev_c != 0 && 
-											        ( prev_style == SCE_C_PREPROCESSOR ||
-											          IsStreamCommentStyle(prev_style) ||
-											          prev_style == SCE_C_PREPROCESSORCOMMENT) );
+												( prev_style == SCE_C_PREPROCESSOR ||
+												  IsStreamCommentStyle(prev_style) ||
+												  prev_style == SCE_C_PREPROCESSORCOMMENT) );
 											continue;//check again
 										}
 									}else if( prev_style == SCE_C_NUMBER ||
-									          prev_style == SCE_C_STRING ||
-									          prev_style == SCE_C_STRINGRAW ||
-									          prev_style == SCE_C_CHARACTER   ){
+										  prev_style == SCE_C_STRING ||
+										  prev_style == SCE_C_STRINGRAW ||
+										  prev_style == SCE_C_CHARACTER   ){
 										prev_c = 0;//not allowed in function prototype
 										j=-1;
 									}else if( prev_style == SCE_C_COMMENTLINE ){
@@ -1074,11 +1075,16 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 							}
 						}//if(options.highligh_functions)
 
-						int subStyle = classifierIdentifiers.ValueFor(s);
-						if (subStyle >= 0) {
-							sc.ChangeState(subStyle|activitySet);
+						if (keywords4.InList(s)) {
+							sc.ChangeState(SCE_C_GLOBALCLASS|activitySet);
+						} else {
+
+							int subStyle = classifierIdentifiers.ValueFor(s);
+							if (subStyle >= 0) {
+								sc.ChangeState(subStyle|activitySet);
+							}
 						}
-					}
+					}//keywords2 else
 
 					const bool literalString = sc.ch == '\"';
 					if (literalString || sc.ch == '\'') {
