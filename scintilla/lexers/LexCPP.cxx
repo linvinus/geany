@@ -903,13 +903,13 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 							char next_c = NextNotSpace(sc, &j);//lets begin
 
 							if( next_c == '(' ){
-								int bracket=0, object_init=0, prev_style=0, j_next = 0;
+								int bracket=0, prev_style=0, j_next = 0;
 								char prev_c = 0;
 								int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
 
 								//printf("denis1: %s %c\r\n",s,next_c);
 								do{//find end of parameters definition
-									if( next_c == ')' ) bracket--;
+									if( next_c == ')' && bracket>0) bracket--;
 									next_c = NextNotSpace(sc, &j);
 									if( next_c == '(' ){
 										bracket++;
@@ -917,7 +917,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								}while(next_c != 0 && ( next_c != ')' || bracket != 0 ) );
 
 								next_c = NextNotSpace(sc, &j);
-								//~ printf("denis01: %s '%c' with+parameters=%d br=%d com=%d\r\n",s,next_c,object_init, bracket, comment);
+								//~ printf("denis01: %s '%c' br=%d com=%d\r\n",s,next_c, bracket, comment);
 
 								/*skip const in C++*/
 								if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
@@ -937,107 +937,126 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								 * checking is is prototype/declaration or not
 								 *
 								 * */
-
 								do{
 									prev_c = PrevNotSpace(sc,&j);
 									prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 									//~ printf("{ %d %d '%c' } ", j, prev_style, sc.GetRelativeCharacter(j+1));
 								}while(IsStreamCommentStyle(prev_style) ||
-											 prev_style == SCE_C_PREPROCESSORCOMMENT);
+								       prev_style == SCE_C_PREPROCESSORCOMMENT);
 
-								if(prev_c == ':' ) {
-									if(sc.GetRelativeCharacter(j) != ':'){
-										int tmpS = MaskActive(styler.StyleAt(sc.currentPos+j));
-										if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2){//checking is it 'public:'
-											prev_c = ';';
-											j=-1;
+								while(1){//used for skipping preprocessor
+									int k = j;
+
+									if(prev_c == ':' ) {
+										if(sc.GetRelativeCharacter(j) != ':'){
+											int tmpS = MaskActive(styler.StyleAt(sc.currentPos+j));
+											if(tmpS != SCE_C_WORD && tmpS != SCE_C_WORD2){//checking is it 'public:'
+												prev_c = ';';
+												j=-1;
+											}
 										}
-									}
-								}else if(prev_style == SCE_C_PREPROCESSOR){
-									next_c=prev_c = 0;//don't highlight preprocessor
-									j=-1;
-								}else if( prev_style == SCE_C_NUMBER ||
-													prev_style == SCE_C_STRING ||
-													prev_style == SCE_C_STRINGRAW ||
-													prev_style == SCE_C_CHARACTER   ){
-									prev_c = 0;//not allowed in function prototype
-									j=-1;
-								}else if( prev_style == SCE_C_COMMENTLINE ){
-									prev_c = ';';//comment line not allowed in function prototype
-									j=-1;
-								}else if(prev_c =='*' && prev_from_space ){
-									/*
-									 * example: asd* myfunc()
-									 * is '*' is a pointer definition or operator?
-									 * to resolve that, try to find some operator or brackets before it
-									 * 
-									 * */
-									int tmp_c,tmp_style,new_c=0,new_j;
-									int k=j;
-									do{
+									}else if(prev_c == 't' && ScanForWord(sc, &k, "explici",-7) ){
+										j-=7;//skip 'explicit'
 										do{
-											tmp_c = PrevNotSpace(sc,&k);
-											tmp_style = MaskActive(styler.StyleAt(sc.currentPos+k+1));
-										}while(IsStreamCommentStyle(tmp_style) || tmp_style == SCE_C_PREPROCESSORCOMMENT);
+											prev_c = PrevNotSpace(sc,&j);
+											prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+										}while(IsStreamCommentStyle(prev_style) ||
+										       prev_style == SCE_C_PREPROCESSORCOMMENT);
+										continue;//check again
+									}else if(prev_style == SCE_C_PREPROCESSOR){
 
-										if(new_c == 0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE)){
-											new_c = tmp_c;//remember next prev character
-											new_j = k;
+										if(prev_c == 'e' && ScanForWord(sc, &k, "#defin",-6) ){
+											next_c=prev_c = 0;//don't highlight #define
+											j=-1;
+										}else{
+											/*skip preprocessor*/
+											do{
+												prev_c = PrevNotSpace(sc,&j);
+												prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+											}while( prev_c != 0 && 
+											        ( prev_style == SCE_C_PREPROCESSOR ||
+											          IsStreamCommentStyle(prev_style) ||
+											          prev_style == SCE_C_PREPROCESSORCOMMENT) );
+											continue;//check again
 										}
-									}while(tmp_style !=0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE) );
+									}else if( prev_style == SCE_C_NUMBER ||
+									          prev_style == SCE_C_STRING ||
+									          prev_style == SCE_C_STRINGRAW ||
+									          prev_style == SCE_C_CHARACTER   ){
+										prev_c = 0;//not allowed in function prototype
+										j=-1;
+									}else if( prev_style == SCE_C_COMMENTLINE ){
+										prev_c = ';';//comment line not allowed in function prototype
+										j=-1;
+									}else if(prev_c =='*' && (prev_from_space || IsASpace(sc.GetRelativeCharacter(j))) ){
+										/*
+										 * example: asd* myfunc()
+										 * is '*' is a pointer definition or operator?
+										 * to resolve that, try to find some operator or brackets before it
+										 * 
+										 * */
+										int tmp_c,tmp_style,new_c=0,new_j;
+										do{
+											do{
+												tmp_c = PrevNotSpace(sc,&k);
+												tmp_style = MaskActive(styler.StyleAt(sc.currentPos+k+1));
+											}while(IsStreamCommentStyle(tmp_style) || tmp_style == SCE_C_PREPROCESSORCOMMENT);
 
-									printf("tmpc='%c'",tmp_c);
-									if( (tmp_style != SCE_C_COMMENTLINE) && (
-											setRelOp.Contains(tmp_c) ||
-											setArithmethicOp.Contains(tmp_c)  ||
-											setLogicalOp.Contains(tmp_c) ||
-											tmp_c == '^' || tmp_c == '~' ||
-											tmp_c == '(' || tmp_c == ')'
-											) ){
-												prev_c = ';' ;//operator was found, mark as function call
-												//~ break;
-									}else if(new_c != 0){
-										prev_c = new_c;
-										j=new_j;
-									}
-								}//'*'
+											if(new_c == 0 && tmp_c !=0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE)){
+												new_c = tmp_c;//remember next prev character
+												new_j = k;
+											}
+										}while(tmp_c !=0 && (tmp_style != SCE_C_OPERATOR && tmp_style != SCE_C_COMMENTLINE) );
 
+										//~printf("tmpc='%c'",tmp_c);
+										if( (tmp_style != SCE_C_COMMENTLINE) && (
+										    setRelOp.Contains(tmp_c) ||
+										    setArithmethicOp.Contains(tmp_c)  ||
+										    setLogicalOp.Contains(tmp_c) ||
+										    tmp_c == '^' || tmp_c == '~' ||
+										    tmp_c == '(' || tmp_c == ')') ){
+													prev_c = ';' ;//operator was found, mark as function call
+													//~ break;
+										}else if(new_c != 0){
+											prev_c = new_c;
+											j=new_j;
+										}
+									}//'*'
+
+									break;
+								}//while(1)
+
+								/* check some special cases */
 								int k = j;
 								if(prev_c == 'n' && ScanForWord(sc, &k, "retur",-5) ){
-									char tmp = sc.GetRelativeCharacter(k--);
+									char tmp = sc.GetRelativeCharacter(k);
 									if(IsASpace(tmp) || tmp == '}'){
 										prev_c=';';//return can't be in declaration
 									}
 								}else if(prev_c == 'e' && ScanForWord(sc, &k, "els",-3) ){
-									char tmp = sc.GetRelativeCharacter(k--);
+									char tmp = sc.GetRelativeCharacter(k);
 									if(IsASpace(tmp) || tmp == '}'){
 										prev_c=';';//else can't be in declaration
 									}
 								}else if(prev_c == 'w' && ScanForWord(sc, &k, "ne",-2) ){
-									char tmp = sc.GetRelativeCharacter(k--);
+									char tmp = sc.GetRelativeCharacter(k);
 									if(IsASpace(tmp) || tmp == '='){
-										object_init=1;//C++ skip object initialization
+										next_c=prev_c = 0;//C++ skip object initialization
 									}
-								}else if(prev_c == 't' && ScanForWord(sc, &k, "explici",-7) ){
-									j-=7;
-									prev_c = PrevNotSpace(sc,&j);//skip explicit keyword
 								}
 
-								if(styler.StyleAt(sc.currentPos+j) == SCE_C_GLOBALCLASS){
-									object_init=1;//skip new class instance, only when header known
-								}
+								//~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
 
+								/* now we are ready to highlight*/
 
-								 //~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
-
-								//prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
 								if( ( (next_c == ';' || next_c == '{')  &&
-											(prev_c !='.' && setWord.Contains(prev_c))  ) ||
-										( next_c == '{' && (prev_c==':' || prev_c=='}' || prev_c == '~' ) ) ||
-										( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
+								      (prev_c !='.' && setWord.Contains(prev_c))  ) ||
+								    ( next_c == '{' && (prev_c==':' /*|| prev_c=='}'*/ || prev_c == '~' ) ) ||
+								    ( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';') )
 								 ){
 									//~ printf("denis_decl: %s %d %c[%d]<- ->%c\r\n",s,j,prev_c,styler.StyleAt(sc.currentPos+j),next_c);
-									if(options.highligh_functions_declaration && !object_init && !(next_c == ';' && !options.highligh_functions_prototypes)){
+									if( options.highligh_functions_declaration &&
+									    !(next_c == ';' && !options.highligh_functions_prototypes)){
 										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
 										//break;
 									}
