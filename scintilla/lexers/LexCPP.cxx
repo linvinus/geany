@@ -887,7 +887,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						sc.GetCurrentLowered(s, sizeof(s));
 					}
 
-					//~ printf("denis: %s %c %d\r\n",s,sc.GetRelativeCharacter(-20),MaskActive(sc.state));
+					//~ printf("denis: %s %c %d level=%d\r\n", s, sc.GetRelativeCharacter(-20), MaskActive(sc.state), styler.LevelAt(styler.GetLine(sc.currentPos))>>16 );
 
 					if (keywords.InList(s)) {
 						lastWordWasUUID = strcmp(s, "uuid") == 0;
@@ -913,7 +913,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 							if( next_c == '(' ){//lets begin
 								int bracket=0, prev_style=0, j_next = 0;
 								char prev_c = 0;
-								int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
+								int istart = -1 - sc.LengthCurrent();//relative start position of current identifier
 
 								do{//find end of parameters definition
 									if( next_c == ')' && bracket>0) bracket--;
