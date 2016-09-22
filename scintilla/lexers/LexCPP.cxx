@@ -1120,7 +1120,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 				}
 				break;
 			case SCE_C_PREPROCESSOR:
-				if (options.stylingWithinPreprocessor) {
+				if (options.stylingWithinPreprocessor || isIncludePreprocessor) {
 					if (IsASpace(sc.ch)) {
 						sc.SetState(SCE_C_DEFAULT|activitySet);
 					}
