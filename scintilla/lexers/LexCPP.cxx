@@ -900,15 +900,20 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 						 * */
 						if(options.highligh_functions){
 							int j=0;
+							/* description of the algorithm:
+							 * 1) check is the next symbol after identifier is open bracket '('
+							 * 2) if so, then suppose this is function, find next symbol after close bracket ')' next_c
+							 * 3) find 'interesting' symbol before function name prev_c
+							 * 4) finally compare next_c and prev_c and make decision how to highlight
+							 * */
 
-							char next_c = NextNotSpace(sc, &j);//lets begin
+							char next_c = NextNotSpace(sc, &j);
 
-							if( next_c == '(' ){
+							if( next_c == '(' ){//lets begin
 								int bracket=0, prev_style=0, j_next = 0;
 								char prev_c = 0;
 								int istart = -1 - (sc.currentPos - styler.GetStartSegment());//relative start position of current identifier
 
-								//printf("denis1: %s %c\r\n",s,next_c);
 								do{//find end of parameters definition
 									if( next_c == ')' && bracket>0) bracket--;
 									next_c = NextNotSpace(sc, &j);
@@ -918,25 +923,24 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								}while(next_c != 0 && ( next_c != ')' || bracket != 0 ) );
 
 								next_c = NextNotSpace(sc, &j);
-								//~ printf("denis01: %s '%c' br=%d com=%d\r\n",s,next_c, bracket, comment);
 
 								/*skip const in C++*/
 								if(next_c == 'c' && ScanForWord(sc, &j, "onst",4) ){
-									next_c = NextNotSpace(sc, &j);//next after 'const' ; or {
+									next_c = NextNotSpace(sc, &j);//next after 'const' should be ';' or '{'
 								}
 
-								if(next_c == '=') next_c = ';';//C++ virtual method
+								if(next_c == '=') next_c = ';';//C++ virtual method,force highlight as prototype
 
 								prev_c = 0;
 								prev_style=0;
 								styler.Flush();//apply current style
-								j_next=j;
-								j= istart;//prev ident start position
-								int prev_from_space = IsASpace(sc.GetRelativeCharacter(j));//is it space before function name?
+								j_next=j;      //save current position
+								j= istart;     //start position to scan prev_c
+								int prev_from_space = IsASpace(sc.GetRelativeCharacter(j));//keep in mind, is there was space before function name?
 
-								/*
-								 * checking is is prototype/declaration or not
-								 *
+								/* Now scan in reverse direction,
+								 * find char before function name,
+								 * then checking is is prototype/declaration or not
 								 * */
 								do{
 									prev_c = PrevNotSpace(sc,&j);
@@ -1016,8 +1020,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 										    setLogicalOp.Contains(tmp_c) ||
 										    tmp_c == '^' || tmp_c == '~' ||
 										    tmp_c == '(' || tmp_c == ')') ){
-													prev_c = ';' ;//operator was found, mark as function call
-													//~ break;
+													prev_c = ';' ;//operator was found, highlight current identifier as function call
 										}else if(new_c != 0){
 											prev_c = new_c;
 											j=new_j;
@@ -1042,7 +1045,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 								}else if(prev_c == 'w' && ScanForWord(sc, &k, "ne",-2) ){
 									char tmp = sc.GetRelativeCharacter(k);
 									if(IsASpace(tmp) || tmp == '='){
-										next_c=prev_c = 0;//C++ skip object initialization
+										next_c=prev_c = 0;//C++ don't highlight object initialization
 									}
 								}
 
@@ -1059,16 +1062,14 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									if( options.highligh_functions_declaration &&
 									    !(next_c == ';' && !options.highligh_functions_prototypes)){
 										sc.ChangeState(SCE_C_FUNC_DECL|activitySet);
-										//break;
 									}
 								}else if((next_c > ' ' && next_c < 'A') || (next_c > 'Z' && next_c < 'a')  || next_c > 'z' ){
 									//~ printf("denis_func: %s %c<- ->%c\r\n",s,prev_c,next_c);
 									sc.ChangeState(SCE_C_FUNC|activitySet);
-									//break;
 								}
 
 								if( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';')){
-									/*parenthesized initializers*/
+									/*parenthesized initializers see SCE_CPP_PARENTHESIZED_INITIALIZATION*/
 									skipCppParamInit = sc.currentPos + j_next;
 								}
 
