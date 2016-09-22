@@ -1026,7 +1026,13 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 											prev_c = new_c;
 											j=new_j;
 										}
-									}//'*'
+									}else if(prev_c == '>'){//skip C++ function declaration with template
+											do{
+												prev_c = PrevNotSpace(sc,&j);
+												prev_style = MaskActive(styler.StyleAt(sc.currentPos+j+1));
+											}while(IsStreamCommentStyle(prev_style) || prev_style == SCE_C_PREPROCESSORCOMMENT);
+											continue;//check again
+									}
 
 									break;
 								}//while(1)
