@@ -106,13 +106,13 @@ char NextNotSpace(StyleContext &sc, int *j){
 		ret = sc.GetRelativeCharacter((*j)++);
 		if( ret == '\\' ){
 			ret = sc.GetRelativeCharacter((*j)++);
-		}else if( ret == '"'){
+		}else if( comment==0 && ret == '"'){
 			str = !str;
 		}
-		if( comment == 0 && ret == '/' && sc.GetRelativeCharacter((*j)) == '*'){
+		if( str==0 && comment == 0 && ret == '/' && sc.GetRelativeCharacter(*j) == '*'){
 			comment=1;
 			(*j)++;
-		}else if( ret == '*' && sc.GetRelativeCharacter((*j)) == '/'){
+		}else if( str==0 && comment && ret == '*' && sc.GetRelativeCharacter(*j) == '/'){
 			comment=0;
 			(*j)++;
 			ret = sc.GetRelativeCharacter((*j)++);
@@ -123,7 +123,8 @@ char NextNotSpace(StyleContext &sc, int *j){
 
 char PrevNotSpace(StyleContext &sc, int *j){
 	char ret;
-	/*comments not ignored here*/
+	/* comments not ignored here,
+	 * instead we are using known style*/
 	do{
 		ret = sc.GetRelativeCharacter((*j)--);
 		if( ret == '\\' ){
@@ -1049,7 +1050,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									}
 								}
 
-								//~ printf("denis10: %s %d '%c'[%d]<- ->%c\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
+								//~ printf("denis10: %s %d '%c'[%d]<- ->'%c'\r\n",s, j, prev_c, styler.StyleAt(sc.currentPos+j), next_c);
 
 								/* now we are ready to highlight*/
 
