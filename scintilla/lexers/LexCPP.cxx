@@ -910,6 +910,30 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 
 							char next_c = NextNotSpace(sc, &j);
 
+							if( next_c == '<' ){//skip C++ template
+								int bracket=0;
+								char tmp;
+								do{//find end of template definition
+									if( next_c == '>' && bracket>0 ) bracket--;
+									tmp = NextNotSpace(sc, &j);
+									if(next_c == '<' && tmp == '<'){
+										j--;
+										break;//skip '<<'
+									}else
+										next_c=tmp;
+									if( next_c == '<' ) bracket++;
+								}while(next_c != 0 && (
+								      (next_c != '>' &&
+								       next_c != '=' &&
+								       next_c != '}' &&
+								       next_c != '{' &&
+								       next_c != '+' &&
+								       next_c != '%' &&
+								       next_c != ';') || bracket != 0 ) );
+
+									next_c = NextNotSpace(sc, &j);//now should be '(', if not then this is not function
+							}
+
 							if( next_c == '(' ){//lets begin
 								int bracket=0, prev_style=0, j_next = 0;
 								char prev_c = 0;
@@ -1075,7 +1099,7 @@ void SCI_METHOD LexerCPP::Lex(Sci_PositionU startPos, Sci_Position length, int i
 									sc.ChangeState(SCE_C_FUNC|activitySet);
 								}
 
-								if( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c==';')){
+								if( next_c == ':' && (prev_c==':' || prev_c=='}' || prev_c=='{' || prev_c==';')){
 									/*parenthesized initializers see SCE_CPP_PARENTHESIZED_INITIALIZATION*/
 									skipCppParamInit = sc.currentPos + j_next;
 								}
